@@ -30,7 +30,8 @@ export const firebaseConfig = {
    dort wird es wirklich durchgesetzt, hier dient es nur der Fehlermeldung.
    Jede Person sieht ausschliesslich ihr eigenes Portfolio. */
 export const ALLOWED_EMAILS = [
-  'akumalic@proton.me'
+  'akumalic@proton.me',
+  'parathazhammaria@gmail.com'
 ];
 
 /* Adresse des Kurs-Proxys (Cloudflare Worker), ohne Schraegstrich am Ende,
