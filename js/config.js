@@ -18,12 +18,12 @@
    ============================================================ */
 
 export const firebaseConfig = {
-  apiKey: 'DEIN_API_KEY',
-  authDomain: 'DEIN_PROJEKT.firebaseapp.com',
-  projectId: 'DEIN_PROJEKT',
-  storageBucket: 'DEIN_PROJEKT.firebasestorage.app',
-  messagingSenderId: '000000000000',
-  appId: '1:000000000000:web:000000000000'
+  apiKey: 'AIzaSyBcAKBQCoYgszTgSiwg0OBrYpau9iT287Q',
+  authDomain: 'portfolio-612b7.firebaseapp.com',
+  projectId: 'portfolio-612b7',
+  storageBucket: 'portfolio-612b7.firebasestorage.app',
+  messagingSenderId: '326635214752',
+  appId: '1:326635214752:web:237e36272b7f31a9a676c5'
 };
 
 /* Wer darf rein? Dieselben Adressen auch in firestore.rules eintragen –
@@ -54,4 +54,4 @@ export const KINDS = [
 /* Waehrungen fuer die Auswahlliste – alle werden von der EZB gefuehrt. */
 export const CURRENCIES = ['CHF', 'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'SEK', 'NOK', 'DKK', 'HKD'];
 
-export const APP_VERSION = '0.1.0';
+export const APP_VERSION = '0.2.0';
