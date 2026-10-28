@@ -39,7 +39,7 @@ export const ALLOWED_EMAILS = [
    Leer = keine automatische Suche und keine Live-Kurse; Kurse lassen sich
    dann pro Wertpapier von Hand eintragen. Wechselkurse funktionieren
    immer, die kommen direkt von der EZB (frankfurter.dev). */
-export const QUOTE_PROXY = '';
+export const QUOTE_PROXY = 'https://kuurs-proxy.a-kumal.workers.dev';
 
 /* Kurse gelten so lange als frisch (Millisekunden). */
 export const QUOTE_MAX_AGE = 10 * 60 * 1000;
@@ -55,4 +55,4 @@ export const KINDS = [
 /* Waehrungen fuer die Auswahlliste – alle werden von der EZB gefuehrt. */
 export const CURRENCIES = ['CHF', 'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'SEK', 'NOK', 'DKK', 'HKD'];
 
-export const APP_VERSION = '0.2.0';
+export const APP_VERSION = '0.3.0';
