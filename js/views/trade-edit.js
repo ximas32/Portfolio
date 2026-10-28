@@ -200,19 +200,38 @@ export function render(root, { id } = {}) {
       pick(JSON.parse(b.dataset.pick), q.value);
     });
     drawLocalResults('');
-    if (!existing) setTimeout(() => q.focus(), 50);
+    // Mit erfassten Wertpapieren keinen Fokus setzen – sonst verdeckt die
+    // iPhone-Tastatur die Liste zum Nachkaufen.
+    if (!existing && !state.instruments.length) setTimeout(() => q.focus(), 50);
   }
 
   let remoteResults = [];
   let remoteState = '';
 
-  function resultRow(item, local) {
+  /** Letzte Transaktion pro Wertpapier – im gewaehlten Konto und insgesamt. */
+  function usage() {
+    const accountId = field('accountId').value;
+    const map = new Map();
+    for (const tr of state.trades) {
+      const u = map.get(tr.instrumentId) || { last: '', inAccount: false };
+      if ((tr.date || '') > u.last) u.last = tr.date || '';
+      if (tr.accountId === accountId) u.inAccount = true;
+      map.set(tr.instrumentId, u);
+    }
+    return map;
+  }
+
+  function resultRow(item, local, use) {
     const payload = esc(JSON.stringify(local ? { id: item.id } : item));
+    const info = local
+      ? [item.symbol, item.isin, item.currency].filter(Boolean).map(esc).join(' · ') +
+        (use?.last ? ` · zuletzt ${fmtDate(use.last)}` : '')
+      : esc([item.symbol, item.exchange].filter(Boolean).join(' · '));
     return `<button type="button" class="result-row" data-pick="${payload}">
       <span class="pos-icon">${kindOf(item.kind).emoji}</span>
       <span class="pos-main">
         <span class="pos-name">${esc(item.name)}</span>
-        <span class="pos-sub">${esc([item.symbol, local ? item.isin : item.exchange, local ? item.currency : ''].filter(Boolean).join(' · '))}${local ? ' · <b>bereits erfasst</b>' : ''}</span>
+        <span class="pos-sub">${info}</span>
       </span>
     </button>`;
   }
@@ -221,19 +240,30 @@ export function render(root, { id } = {}) {
     const box = $('#inst-results', root);
     if (!box) return;
     const words = norm(text).split(' ').filter(Boolean);
+    const use = usage();
+    // Bereits erfasste Wertpapiere: ohne Suchtext alle, sonst die passenden.
+    // Zuerst die aus dem gewaehlten Konto, dann nach letztem Kauf.
     const local = state.instruments
       .filter((i) => {
-        if (!words.length) return false;
         const hay = norm(`${i.name} ${i.symbol} ${i.isin}`);
         return words.every((w) => hay.includes(w));
       })
-      .slice(0, 5);
+      .sort((a, b) => {
+        const ua = use.get(a.id) || {};
+        const ub = use.get(b.id) || {};
+        return (ub.inAccount ? 1 : 0) - (ua.inAccount ? 1 : 0) ||
+          (ub.last || '').localeCompare(ua.last || '') ||
+          (a.name || '').localeCompare(b.name || '', 'de');
+      })
+      .slice(0, words.length ? 6 : 50);
     const localSymbols = new Set(local.map((i) => i.symbol));
     const remote = remoteResults.filter((r) => !localSymbols.has(r.symbol));
     const canExpand = hasProxy && isIsin(text.trim()) && remoteResults.length && !remoteExpanded && !remoteState;
     box.innerHTML = `
-      ${local.map((i) => resultRow(i, true)).join('')}
-      ${remote.map((r) => resultRow(r, false)).join('')}
+      ${local.length ? `<div class="result-head">${words.length ? 'Bereits erfasst' : 'Bereits erfasst – antippen zum Nachkaufen'}</div>` : ''}
+      ${local.map((i) => resultRow(i, true, use.get(i.id))).join('')}
+      ${remote.length ? '<div class="result-head">Online gefunden</div>' : ''}
+      ${remote.map((r) => resultRow(r, false, null)).join('')}
       ${remoteState ? `<p class="sub">${remoteState}</p>` : ''}
       ${canExpand ? `<button type="button" class="btn btn-sm btn-block" id="expand">Weitere Börsenplätze suchen (z. B. SIX in CHF)</button>
         <p class="sub">Wähle den Börsenplatz, an dem du gekauft hast – davon hängt die Währung ab.</p>` : ''}`;
@@ -401,6 +431,10 @@ export function render(root, { id } = {}) {
 
   /* ---------- Ereignisse ---------- */
   field('date').addEventListener('change', () => { fxManual = false; loadFx(); });
+  field('accountId').addEventListener('change', () => {
+    const q = $('#inst-q', root);
+    if (q) drawLocalResults(q.value);
+  });
   field('fxRate').addEventListener('input', () => { fxManual = true; $('#fx-info', root).textContent = 'Eigener Kurs (z. B. von der Bankabrechnung).'; updateTotals(); });
   $('#fx-reload', root).addEventListener('click', () => { fxManual = false; loadFx(); });
   ['quantity', 'price', 'fees'].forEach((n) => field(n).addEventListener('input', updateTotals));

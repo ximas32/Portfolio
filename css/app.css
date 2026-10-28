@@ -240,6 +240,7 @@ label { font-size: .9rem; color: var(--muted); display: block; }
   width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
   margin-bottom: .4rem; text-align: left; cursor: pointer;
 }
+.result-head { font-size: .78rem; color: var(--muted); margin: .2rem .1rem .35rem; }
 .sel-inst { display: flex; gap: .7rem; align-items: center; margin-bottom: .6rem; }
 .new-inst { border-top: 1px dashed var(--border); padding-top: .7rem; }
 

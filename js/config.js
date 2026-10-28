@@ -55,4 +55,4 @@ export const KINDS = [
 /* Waehrungen fuer die Auswahlliste – alle werden von der EZB gefuehrt. */
 export const CURRENCIES = ['CHF', 'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'SEK', 'NOK', 'DKK', 'HKD'];
 
-export const APP_VERSION = '0.3.0';
+export const APP_VERSION = '0.4.0';

@@ -1,7 +1,7 @@
 /* Service Worker – App-Shell Cache.
    WICHTIG: Bei jedem Deploy CACHE_VERSION hochzählen, damit alle Geräte
    die neue Version bekommen. */
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_NAME = `portfolio-${CACHE_VERSION}`;
 
 const SHELL = [
