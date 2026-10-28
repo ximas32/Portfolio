@@ -18,8 +18,8 @@ Private Web-App (PWA) für das iPhone: alle Konten, Aktien und ETFs im
 - Backup als JSON, Transaktionen als CSV (für Excel).
 
 Kein Build-Schritt, kein npm: Datei ändern, `git push`, fertig. Aufbau und
-Erfahrungen stammen aus dem Rezeptbuch-Projekt (siehe dort
-`PWA-MIT-FIREBASE.md`).
+Erfahrungen stammen aus dem Rezeptbuch-Projekt, siehe
+[PWA-MIT-FIREBASE.md](PWA-MIT-FIREBASE.md).
 
 ---
 
