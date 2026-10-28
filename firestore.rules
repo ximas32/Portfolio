@@ -1,0 +1,56 @@
+rules_version = '2';
+
+// Diese Datei ist nur eine Kopie zum Nachschlagen. Wirksam werden die Regeln
+// erst, wenn sie in der Firebase-Konsole eingefuegt und veroeffentlicht sind:
+// Datenbanken und Speicher -> Firestore -> Reiter "Regeln" -> Veroeffentlichen.
+// Die erste Zeile (rules_version = '2') gehoert zwingend dazu.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Dieselben Adressen wie in js/config.js (ALLOWED_EMAILS)
+    function erlaubt() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() in [
+             'akumalic@proton.me'
+           ];
+    }
+
+    // Jede Person sieht und aendert ausschliesslich ihr eigenes Portfolio.
+    function eigenes(uid) {
+      return erlaubt() && request.auth.uid == uid;
+    }
+
+    function groesseOk() {
+      return request.resource.data.size() < 40;
+    }
+
+    match /users/{uid}/accounts/{id} {
+      allow read, delete: if eigenes(uid);
+      allow create, update: if eigenes(uid) && groesseOk()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0;
+    }
+
+    match /users/{uid}/instruments/{id} {
+      allow read, delete: if eigenes(uid);
+      allow create, update: if eigenes(uid) && groesseOk()
+        && request.resource.data.currency is string;
+    }
+
+    match /users/{uid}/trades/{id} {
+      allow read, delete: if eigenes(uid);
+      allow create, update: if eigenes(uid) && groesseOk()
+        && request.resource.data.type in ['buy', 'sell']
+        && request.resource.data.quantity is number
+        && request.resource.data.quantity > 0
+        && request.resource.data.fxRate is number
+        && request.resource.data.fxRate > 0;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
