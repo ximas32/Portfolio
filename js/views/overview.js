@@ -2,10 +2,15 @@
 import { state, onChange } from '../store.js';
 import { totalSummary, breakdown } from '../calc.js';
 import { gainHtml, kv, bars, marketStatus, kindOf, emptyState } from '../ui.js';
-import { esc, fmtCur, fmtMoney } from '../util.js';
+import { mountValueChart } from '../history-chart.js';
+import { $, esc, fmtCur, fmtMoney } from '../util.js';
 
 export function render(root) {
+  let chartOff = () => {};
+
   function draw() {
+    chartOff();
+    chartOff = () => {};
     if (state.error) {
       root.innerHTML = `<div class="card error">${esc(state.error)}</div>`;
       return;
@@ -47,6 +52,8 @@ export function render(root) {
         ${marketStatus()}
       </div>
 
+      <div id="value-chart"></div>
+
       <h2 class="section-title">Konten</h2>
       <div class="list">
         ${s.accounts.map((a) => `
@@ -83,8 +90,10 @@ export function render(root) {
           <a class="btn btn-primary" href="#/erfassen">Ersten Kauf erfassen</a>
         </div>`}
     `;
+    chartOff = mountValueChart($('#value-chart', root));
   }
 
   draw();
-  return onChange(draw);
+  const off = onChange(draw);
+  return () => { off(); chartOff(); };
 }

@@ -245,6 +245,122 @@ export function mergedPositions() {
     .sort((a, b) => (b.valueChf ?? b.costChf) - (a.valueChf ?? a.costChf));
 }
 
+/* ---------------- Verlauf fuer die Linien-Charts ---------------- */
+
+/** Kurs zu einem Datum aus einer sortierten [[d, v]]-Reihe: letzter Wert davor. */
+function makeLookup(points) {
+  let i = 0;
+  let last = null;
+  // Die Abfragen kommen in aufsteigender Datumsfolge -> ein Zeiger genuegt
+  return (date) => {
+    while (i < points.length && points[i][0] <= date) { last = points[i][1]; i++; }
+    return last;
+  };
+}
+
+/** Werktage (Mo–Fr) von start bis end, als "YYYY-MM-DD". */
+function weekdays(start, end) {
+  const out = [];
+  for (let t = Date.parse(`${start}T00:00:00Z`); t <= Date.parse(`${end}T00:00:00Z`); t += 86400000) {
+    const day = new Date(t).getUTCDay();
+    if (day !== 0 && day !== 6) out.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+/**
+ * Taeglicher Wert und Einstand in CHF (ohne Cash – davon gibt es keinen
+ * Verlauf). Der letzte Punkt ist "jetzt" mit den Live-Kursen, damit der Chart
+ * genau beim Wertschriften-Total endet.
+ * @param {{prices, fx}} hist  aus market.getHistory()
+ * @param {string|null} accountId  null = alle Konten
+ * @returns {Array<{d:string, value:number, cost:number}>}
+ */
+export function valueSeries(hist, accountId = null) {
+  const trades = sortTrades(state.trades.filter((t) => !accountId || t.accountId === accountId));
+  if (!trades.length) return [];
+  const today = new Date().toISOString().slice(0, 10);
+  const days = weekdays(trades[0].date, today);
+  if (days[days.length - 1] !== today) days.push(today);
+
+  const instById = Object.fromEntries(state.instruments.map((i) => [i.id, i]));
+  const priceLookup = {};
+  const priceCurrency = {};
+  const lastTradePrice = {};
+  for (const id of new Set(trades.map((t) => t.instrumentId))) {
+    const h = hist.prices[instById[id]?.symbol];
+    priceLookup[id] = h ? makeLookup(h.points) : () => null;
+    priceCurrency[id] = h ? h.currency : (instById[id]?.currency || 'CHF');
+  }
+  const fxLookup = {};
+  const fxFallback = {};
+  const fxAt = (cur, d) => {
+    if (cur === 'CHF') return 1;
+    fxLookup[cur] ||= makeLookup(hist.fx[cur] || []);
+    return fxLookup[cur](d) ?? fxFallback[cur] ?? null;
+  };
+
+  // Bestand pro Konto+Wertpapier, wie in computePosition
+  const pos = {};
+  let ti = 0;
+  const out = [];
+  for (const d of days) {
+    while (ti < trades.length && trades[ti].date <= d) {
+      const t = trades[ti++];
+      const key = `${t.accountId}|${t.instrumentId}`;
+      const p = pos[key] ||= { id: t.instrumentId, qty: 0, cost: 0 };
+      const q = Number(t.quantity) || 0;
+      if (t.type === 'sell') {
+        if (p.qty > EPS) {
+          const share = Math.min(q, p.qty) / p.qty;
+          p.cost -= p.cost * share;
+          p.qty -= Math.min(q, p.qty);
+          if (p.qty < EPS) { p.qty = 0; p.cost = 0; }
+        }
+      } else {
+        p.qty += q;
+        p.cost += tradeChf(t);
+      }
+      lastTradePrice[t.instrumentId] = Number(t.price);
+      if (t.currency !== 'CHF' && Number(t.fxRate)) fxFallback[t.currency] = Number(t.fxRate);
+    }
+    let value = 0;
+    let cost = 0;
+    const priceToday = {};
+    for (const id of Object.keys(priceLookup)) priceToday[id] = priceLookup[id](d);
+    for (const p of Object.values(pos)) {
+      if (p.qty <= EPS) continue;
+      cost += p.cost;
+      const price = priceToday[p.id] ?? lastTradePrice[p.id];
+      const fx = fxAt(priceCurrency[p.id], d);
+      value += p.qty * (price || 0) * (fx ?? 0);
+    }
+    out.push({ d, value, cost });
+  }
+
+  // Letzter Punkt = jetzt, mit denselben Zahlen wie die Uebersicht
+  const now = accountId
+    ? summarize(positions({ accountId }))
+    : summarize(state.accounts.flatMap((a) => positions({ accountId: a.id })));
+  if (!now.missing) {
+    out[out.length - 1] = { d: today, value: now.valueChf, cost: now.costChf };
+  }
+  return out;
+}
+
+/** Kursverlauf eines Wertpapiers in seiner Waehrung, plus der aktuelle Kurs. */
+export function priceSeries(hist, instrument) {
+  const h = hist.prices[instrument?.symbol];
+  const points = h ? h.points.map(([d, c]) => ({ d, price: c })) : [];
+  const q = instrument?.symbol ? state.quotes[instrument.symbol] : null;
+  const today = new Date().toISOString().slice(0, 10);
+  if (q && Number.isFinite(q.price)) {
+    if (points.length && points[points.length - 1].d === today) points[points.length - 1].price = q.price;
+    else points.push({ d: today, price: q.price });
+  }
+  return { currency: h?.currency || instrument?.currency, points };
+}
+
 /** Verteilung nach einem Merkmal (Waehrung, Art, Konto) in CHF */
 export function breakdown(list, keyFn, labelFn = (k) => k) {
   const map = new Map();

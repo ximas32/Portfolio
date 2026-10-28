@@ -14,6 +14,10 @@ Private Web-App (PWA) für das iPhone: alle Konten, Aktien und ETFs im
   und **Währungseffekt** (was der Franken dazu beigetragen hat).
 - Verkäufe nach der Durchschnittskosten-Methode, realisierter Gewinn in CHF.
 - Verteilung nach Konto, Währung und Art.
+- Linien-Charts: Wert und Einstand in CHF über die Zeit (gesamt und pro
+  Konto), Kursverlauf pro Wertpapier mit Kauf- und Verkaufspunkten. Pro
+  Wertpapier genügt eine Anfrage für die ganze Historie; sie wird auf dem
+  Gerät gespeichert und höchstens alle 12 Stunden erneuert.
 - Offline lesbar, Synchronisation zwischen Geräten über Firebase.
 - Backup als JSON, Transaktionen als CSV (für Excel).
 
@@ -132,6 +136,8 @@ js/store.js         Daten (Firestore bzw. Demo-Speicher)
 js/market.js        Suche, Kurse, Wechselkurse
 js/calc.js          Rechnung in CHF (Einstand, Wert, Effekte, Verkäufe)
 js/ui.js            gemeinsame Bausteine
+js/chart.js         Linien-Chart (SVG, ohne Bibliothek)
+js/history-chart.js Verlaufs-Karten für Übersicht, Konto, Wertpapier
 js/views/…          Übersicht, Positionen, Wertpapier, Konten, Erfassen, Einstellungen
 worker/kurs-proxy.js  Cloudflare Worker
 dev-server.py       lokaler Testserver inkl. Proxy
@@ -156,7 +162,6 @@ firestore.rules     Kopie der Sicherheitsregeln
 ## Ideen für später
 
 - Dividenden erfassen (in CHF zum Tageskurs, als Ertrag)
-- Verlauf des Gesamtvermögens (täglicher Snapshot)
 - Import der Transaktionen aus Bank-CSV (Swissquote, IBKR, PostFinance …)
 - Steuerwert per 31.12. (Kurse der ESTV-Kursliste)
 - Zielallokation und Rebalancing-Hinweise

@@ -258,6 +258,163 @@ export function refreshMarket({ force = false } = {}) {
   return running;
 }
 
+/* ---------------- Historie fuer die Linien-Charts ----------------
+   Pro Wertpapier eine einzige Anfrage fuer alle Tageskurse seit dem ersten
+   Kauf, dazu eine fuer alle Wechselkurse. Beides wird im localStorage
+   kompakt als [Datum, Kurs] gespeichert und hoechstens alle 12 Stunden
+   erneuert – Yahoo und der Proxy merken davon praktisch nichts. */
+
+const HIST_MAX_AGE = 12 * 60 * 60 * 1000;
+const HIST_RETRY = 5 * 60 * 1000;
+const PRICE_HIST_KEY = 'portfolio.hist.';
+const FX_HIST_KEY = 'portfolio.fxhist';
+
+/** Im Speicher: { prices: {symbol: {currency, points:[[d,c]]}}, fx: {cur: [[d,rate]]} } */
+const history = { prices: {}, fx: {}, error: '', failedAt: 0 };
+let historyLoading = null;
+
+function readJson(key) {
+  try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; }
+}
+function writeJson(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* voll – dann eben nur im Speicher */ }
+}
+
+function isoDate(ms) {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function minusDays(date, days) {
+  return isoDate(Date.parse(`${date}T00:00:00Z`) - days * 86400000);
+}
+
+/** Tageskurse eines Symbols ab Datum (bereits auf Hauptwaehrung normalisiert). */
+async function fetchPriceHistory(symbol, from) {
+  const p1 = Math.floor(Date.parse(`${from}T00:00:00Z`) / 1000);
+  const p2 = Math.floor(Date.now() / 1000) + 86400;
+  const data = await yahoo(`/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${p1}&period2=${p2}&interval=1d`);
+  const r = data.chart?.result?.[0];
+  if (!r) throw new Error(`Keine Historie für ${symbol}`);
+  const offset = (r.meta?.gmtoffset || 0) * 1000;
+  const closes = r.indicators?.quote?.[0]?.close || [];
+  const unit = normalizePrice(1, r.meta?.currency);
+  const points = [];
+  (r.timestamp || []).forEach((ts, i) => {
+    if (Number.isFinite(closes[i])) points.push([isoDate(ts * 1000 + offset), closes[i] * unit.price]);
+  });
+  return { currency: unit.currency, points };
+}
+
+/** Taegliche EZB-Kurse ab Datum, als CHF pro Einheit. */
+async function fetchFxHistory(currencies, from) {
+  const data = await getJson(`${FX_API}/${from}..?base=CHF&symbols=${currencies.join(',')}`);
+  const out = Object.fromEntries(currencies.map((c) => [c, []]));
+  for (const date of Object.keys(data.rates || {}).sort()) {
+    for (const [cur, perChf] of Object.entries(data.rates[date])) {
+      if (perChf && out[cur]) out[cur].push([date, 1 / perChf]);
+    }
+  }
+  return out;
+}
+
+/** Was die Charts brauchen: Symbole bzw. Waehrungen mit fruehestem Datum. */
+function historyNeeds() {
+  const firstByInst = {};
+  for (const t of state.trades) {
+    if (!firstByInst[t.instrumentId] || t.date < firstByInst[t.instrumentId]) firstByInst[t.instrumentId] = t.date;
+  }
+  const symbols = {};
+  const currencies = {};
+  for (const [id, first] of Object.entries(firstByInst)) {
+    const inst = state.instruments.find((i) => i.id === id);
+    // 30 Tage Vorlauf, damit der Kurs-Chart vor dem ersten Kauf beginnt
+    const from = minusDays(first, 30);
+    if (inst?.symbol && (!symbols[inst.symbol] || from < symbols[inst.symbol])) symbols[inst.symbol] = from;
+    const cur = inst?.currency;
+    if (cur && cur !== 'CHF' && (!currencies[cur] || from < currencies[cur])) currencies[cur] = from;
+  }
+  return { symbols, currencies };
+}
+
+function priceCacheOk(entry, from) {
+  return entry && entry.from <= from && Date.now() - entry.at < HIST_MAX_AGE;
+}
+
+async function loadHistories() {
+  const { symbols, currencies } = historyNeeds();
+  const problems = [];
+
+  if (hasProxy) {
+    await mapLimited(Object.entries(symbols), 4, async ([sym, from]) => {
+      let entry = history.prices[sym] || readJson(PRICE_HIST_KEY + sym);
+      if (!priceCacheOk(entry, from)) {
+        try {
+          const h = await fetchPriceHistory(sym, from);
+          entry = { from, at: Date.now(), ...h };
+          writeJson(PRICE_HIST_KEY + sym, entry);
+        } catch (err) {
+          problems.push(`${sym}: ${err.message}`);
+        }
+      }
+      if (entry) history.prices[sym] = entry;
+    });
+  }
+
+  const curList = Object.keys(currencies).sort();
+  if (curList.length) {
+    const from = Object.values(currencies).sort()[0];
+    let entry = history.fxEntry || readJson(FX_HIST_KEY);
+    const covers = entry && entry.from <= from && curList.every((c) => entry.rates[c]);
+    if (!covers || Date.now() - entry.at >= HIST_MAX_AGE) {
+      try {
+        entry = { from, at: Date.now(), rates: await fetchFxHistory(curList, from) };
+        writeJson(FX_HIST_KEY, entry);
+      } catch (err) {
+        problems.push(`Wechselkurse: ${err.message}`);
+      }
+    }
+    if (entry) { history.fxEntry = entry; history.fx = entry.rates; }
+  }
+
+  history.error = problems.join(' · ');
+  history.failedAt = problems.length ? Date.now() : 0;
+}
+
+/** Sind alle benoetigten Reihen vorhanden und frisch genug? */
+function historyComplete() {
+  const { symbols, currencies } = historyNeeds();
+  const pricesOk = !hasProxy || Object.entries(symbols).every(([s, from]) => priceCacheOk(history.prices[s], from));
+  const fxOk = Object.entries(currencies).every(([c, from]) =>
+    history.fxEntry && history.fxEntry.from <= from && history.fx[c] && Date.now() - history.fxEntry.at < HIST_MAX_AGE);
+  return pricesOk && fxOk;
+}
+
+/**
+ * Historie fuer die Charts. Liefert sofort, was da ist, und stoesst im
+ * Hintergrund das Nachladen an – danach meldet notify() die neuen Daten.
+ * @returns {{prices, fx, loading:boolean, error:string}}
+ */
+export function getHistory() {
+  const retryOk = !history.failedAt || Date.now() - history.failedAt > HIST_RETRY;
+  if (!historyLoading && retryOk && navigator.onLine && !historyComplete()) {
+    historyLoading = loadHistories()
+      .catch((err) => { history.error = err.message; history.failedAt = Date.now(); })
+      .finally(() => { historyLoading = null; notify(); });
+  }
+  // Beim ersten Aufruf auch ohne Netz den Geraete-Cache nutzen
+  if (!Object.keys(history.prices).length) {
+    for (const sym of Object.keys(historyNeeds().symbols)) {
+      const e = readJson(PRICE_HIST_KEY + sym);
+      if (e) history.prices[sym] = e;
+    }
+  }
+  if (!history.fxEntry) {
+    const e = readJson(FX_HIST_KEY);
+    if (e) { history.fxEntry = e; history.fx = e.rates; }
+  }
+  return { prices: history.prices, fx: history.fx, loading: Boolean(historyLoading), error: history.error };
+}
+
 /** Nach dem Erfassen eines neuen Wertpapiers sofort dessen Kurs holen. */
 export async function refreshQuote(symbol) {
   if (!hasProxy || !symbol) return;

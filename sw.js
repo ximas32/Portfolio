@@ -1,7 +1,7 @@
 /* Service Worker – App-Shell Cache.
    WICHTIG: Bei jedem Deploy CACHE_VERSION hochzählen, damit alle Geräte
    die neue Version bekommen. */
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CACHE_NAME = `portfolio-${CACHE_VERSION}`;
 
 const SHELL = [
@@ -17,6 +17,8 @@ const SHELL = [
   './js/market.js',
   './js/calc.js',
   './js/ui.js',
+  './js/chart.js',
+  './js/history-chart.js',
   './js/util.js',
   './js/theme.js',
   './js/views/overview.js',

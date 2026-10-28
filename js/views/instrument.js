@@ -4,12 +4,16 @@ import { state, onChange, getInstrument, saveInstrument, deleteInstrument } from
 import { mergedPosition, tradeChf } from '../calc.js';
 import { hasProxy, refreshQuote } from '../market.js';
 import { gainHtml, kv, fxText, kindOf, marketStatus, emptyState } from '../ui.js';
+import { mountPriceChart } from '../history-chart.js';
 import { $, esc, fmtCur, fmtNum, fmtDate, fmtTime, parseNum, today, toast } from '../util.js';
 
 export function render(root, { id }) {
   let editOpen = false;
+  let chartOff = () => {};
 
   function draw() {
+    chartOff();
+    chartOff = () => {};
     if (!state.loaded) { root.innerHTML = '<div class="empty"><span class="spinner"></span></div>'; return; }
     const inst = getInstrument(id);
     const p = mergedPosition(id, { includeClosed: true });
@@ -41,6 +45,8 @@ export function render(root, { id }) {
         ${kv('Quelle', `<span class="muted">${sourceText}</span>`, 'kv-sub')}
         ${q && q.currency !== 'CHF' ? kv('Wechselkurs heute', `<span class="muted">${fxText(q.currency, p.fxNow)}</span>`, 'kv-sub') : ''}
       </section>
+
+      <div id="price-chart"></div>
 
       ${p ? `
       <div class="card">
@@ -110,6 +116,8 @@ export function render(root, { id }) {
       </details>
       ${marketStatus()}`;
 
+    chartOff = mountPriceChart($('#price-chart', root), i, p ? p.trades : []);
+
     $('#inst-edit', root).addEventListener('toggle', (e) => { editOpen = e.target.open; });
 
     $('#inst-form', root).addEventListener('submit', (e) => {
@@ -141,5 +149,6 @@ export function render(root, { id }) {
 
   draw();
   // Waehrend das Formular offen ist nicht neu zeichnen, sonst ist die Eingabe weg
-  return onChange(() => { if (!editOpen) draw(); });
+  const off = onChange(() => { if (!editOpen) draw(); });
+  return () => { off(); chartOff(); };
 }
